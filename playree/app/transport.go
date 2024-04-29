@@ -29,7 +29,7 @@ func (app *Application) Router() *echo.Echo {
 	e.GET(app.SpotifyRedirectPath, app.HandleSpotifyRedirect)
 	e.GET("/logout", app.HandleLogout, app.IfNotLogined)
 
-	e.POST("/create_playlist", app.HandleCreatePlaylist, app.IfNotLogined)
+	e.POST("/create_playlist", app.HandleCreatePlaylist, app.IfNotLogined, app.UpdateSpotifyTokenIfExpired)
 
 	return e
 }
@@ -87,13 +87,13 @@ func (app *Application) HandleSpotifyRedirect(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, models.ErrStateMismatch)
 	}
 
-	token, err := app.Authenticator.Token(c.Request().Context(), state, c.Request())
+	token, err := app.Authenticator.Token(context.Background(), state, c.Request())
 	if err != nil {
 		c.Logger().Error(err)
 		return err
 	}
 
-	client := spotify.New(app.Authenticator.Client(c.Request().Context(), token))
+	client := spotify.New(app.Authenticator.Client(context.Background(), token))
 
 	user, err := client.CurrentUser(context.Background())
 	if err != nil {
@@ -162,7 +162,7 @@ func (app *Application) HandleLogout(c echo.Context) error {
 		return err
 	}
 
-	if err := app.TokenStore.Delete(c.Request().Context(), userID); err != nil {
+	if err := app.TokenStore.Delete(context.Background(), userID); err != nil {
 		c.Logger().Error(err)
 		return err
 	}
@@ -179,36 +179,34 @@ func (app *Application) HandleCreatePlaylist(c echo.Context) error {
 		return err
 	}
 
-	token, err := app.TokenStore.Get(c.Request().Context(), userID)
+	token, err := app.TokenStore.Get(context.Background(), userID)
 	if err != nil {
 		c.Logger().Error(err)
 		return err
 	}
 
-	client := spotify.New(app.Authenticator.Client(c.Request().Context(), token))
+	client := spotify.New(app.Authenticator.Client(context.Background(), token))
 
 	defer func() {
-		updatedToken, err := client.Token()
-		if err != nil {
+		if err := app.updateTokenFromClientIfNeeded(token, client, userID); err != nil {
 			c.Logger().Error(err)
-		}
-
-		if updatedToken.AccessToken != token.AccessToken {
-			if err := app.TokenStore.Update(c.Request().Context(), userID, updatedToken); err != nil {
-				c.Logger().Error(err)
-			}
 		}
 	}()
 
-	tracks, err := getTracksFromPlaylist(client, playlistID)
+	data, err := getTracksFromPlaylist(client, playlistID)
 	if err != nil {
 		c.Logger().Error(err)
 		return err
 	}
 
-	for _, t := range tracks {
-		fmt.Printf("%+v\n", t)
+	playreePlaylistID := uuid.NewString()
+
+	req := models.CreatePlaylistRequest{
+		PlayreePlaylistID: playreePlaylistID,
+		Tracks:            data,
 	}
+
+	fmt.Printf("%+v\n", req)
 
 	return nil
 }

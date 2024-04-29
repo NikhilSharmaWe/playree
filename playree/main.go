@@ -15,7 +15,11 @@ func init() {
 }
 
 func main() {
-	application := app.NewApplication()
+	application, err := app.NewApplication()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	e := application.Router()
 
 	log.Fatal(e.Start(os.Getenv("ADDR")))

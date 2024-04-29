@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+option go_package = "github.com/NikhilSharmaWe/playree/playlist_creator/proto";
+
+service CreatePlaylistService{
+	rpc CreatePlaylist(CreatePlaylistRequest) returns (CreatePlaylistResponse);
+}
+
+message Track {
+	string name = 1;
+	string artists = 2;
+}
+
+message CreatePlaylistRequest {
+	string playree_playlist_id = 1;
+	repeated Track tracks = 2;
+}
+
+message CreatePlaylistResponse {
+	string playree_playlist_id = 1;
+}
+
