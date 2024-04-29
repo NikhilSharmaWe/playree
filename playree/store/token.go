@@ -77,7 +77,6 @@ func (ts *tokenStore) Update(ctx context.Context, userID string, newToken *oauth
 		return fmt.Errorf("failed to get existing token: %w", err)
 	}
 
-	// If the existing token is not found, consider it an error (optional logic)
 	if existingToken == nil {
 		return fmt.Errorf("token to update not found")
 	}

@@ -1,0 +1,12 @@
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+}
+
+.logout {
+    float: right;
+    margin-top: 10px;
+    margin-right: 10px;
+}

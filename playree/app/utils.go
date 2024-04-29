@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo/v4"
+	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -102,7 +104,7 @@ func getContext(c echo.Context, key string) (string, error) {
 	return v.(string), nil
 }
 
-func deleteContext(c echo.Context, keys []string) error {
+func deleteFromSession(c echo.Context, keys []string) error {
 	session := c.Get("session").(*sessions.Session)
 
 	for _, k := range keys {
@@ -118,17 +120,25 @@ func clearSessionHandler(c echo.Context) error {
 	return session.Save(c.Request(), c.Response())
 }
 
-func (app *Application) createIfNotExists(username, email string, githubAccess bool) error {
-	exists, err := app.UserStore.IsExists("username = ?", username)
+func getTracksFromPlaylist(client *spotify.Client, playlistID string) ([]models.Track, error) {
+	playlist, err := client.GetPlaylist(context.Background(), spotify.ID(playlistID))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if exists {
-		return models.ErrUserAlreadyExists
+	var tracks []models.Track
+	for _, track := range playlist.Tracks.Tracks {
+		var artists string
+
+		for _, artist := range track.Track.SimpleTrack.Artists {
+			artists = artists + " " + artist.Name
+		}
+
+		tracks = append(tracks, models.Track{
+			Name:    track.Track.Name,
+			Artists: artists,
+		})
 	}
 
-	return app.UserStore.Create(models.UserDBModel{
-		Username: username,
-	})
+	return tracks, nil
 }

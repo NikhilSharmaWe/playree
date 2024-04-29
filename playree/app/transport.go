@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"path"
 
 	"github.com/NikhilSharmaWe/playree/playree/models"
 	"github.com/google/uuid"
@@ -15,63 +17,28 @@ func (app *Application) Router() *echo.Echo {
 	e := echo.New()
 
 	e.Pre(middleware.RemoveTrailingSlash())
-	e.Use(app.createSessionMiddleware)
+	e.Use(app.CreateSessionMiddleware)
 	e.Static("/assets", "./public")
 
-	e.GET("/", ServeHTML("./public/login.html"))
-	e.GET("/signup", ServeHTML("./public/signup.html"), app.IfAlreadyLogined)
-	e.GET("/home", ServeHTML("./public/home.html"), app.IfAlreadyLogined)
+	e.GET("/", ServeFile("./public/login"), app.IfAlreadyLogined)
+	e.GET("/signup", ServeFile("./public/signup"), app.IfAlreadyLogined)
+	e.GET("/home", ServeFile("./public/home"), app.IfNotLogined)
+	e.GET("/create_playlist", ServeFile("./public/create_playlist"), app.IfNotLogined)
 
-	// e.GET("/auth", app.HandleAuth, app.IfAlreadyLogined)
 	e.GET("/spotify-auth", app.HandleSpotifyAuth)
 	e.GET(app.SpotifyRedirectPath, app.HandleSpotifyRedirect)
+	e.GET("/logout", app.HandleLogout, app.IfNotLogined)
+
+	e.POST("/create_playlist", app.HandleCreatePlaylist, app.IfNotLogined)
 
 	return e
 }
 
-func ServeHTML(htmlPath string) echo.HandlerFunc {
+func ServeFile(path string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return c.File(htmlPath)
+		return c.File(path)
 	}
 }
-
-// func (app *Application) HandleAuth(c echo.Context) error {
-// 	action := c.QueryParam("action")
-// 	username := c.FormValue("username")
-
-// 	switch action {
-// 	case "signup":
-// 		exists, err := app.UserStore.IsExists("username = ?", username)
-// 		if err != nil {
-// 			c.Logger().Error(err)
-// 			return err
-// 		}
-
-// 		if exists {
-// 			return echo.NewHTTPError(http.StatusBadRequest, models.ErrUserAlreadyExists)
-// 		}
-
-// 		setContext(c, map[string]any{})
-
-// 		return c.Redirect(http.StatusSeeOther, "/spotify-auth")
-
-// 	case "login":
-// 		exists, err := app.UserStore.IsExists("username = ?", username)
-// 		if err != nil {
-// 			c.Logger().Error(err)
-// 			return err
-// 		}
-
-// 		if !exists {
-// 			return echo.NewHTTPError(http.StatusBadRequest, models.ErrUserNotExists)
-// 		}
-
-// 		return c.Redirect(http.StatusSeeOther, "/spotify-auth")
-
-// 	default:
-// 		return echo.NewHTTPError(http.StatusBadRequest, models.ErrInvalidAction)
-// 	}
-// }
 
 func (app *Application) HandleSpotifyAuth(c echo.Context) error {
 	action := c.QueryParam("action")
@@ -92,24 +59,12 @@ func (app *Application) HandleSpotifyAuth(c echo.Context) error {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		c.Logger().Error(err)
-		return err
-	}
-
-	// return c.Redirect(http.StatusSeeOther, url)
-	if _, err = http.DefaultClient.Do(req); err != nil {
-		c.Logger().Error(err)
-		return err
-	}
-
-	return nil
+	return c.Redirect(http.StatusSeeOther, url)
 }
 
 func (app *Application) HandleSpotifyRedirect(c echo.Context) error {
 	defer func() {
-		deleteContext(c, []string{"action", "state"})
+		deleteFromSession(c, []string{"action", "state"})
 	}()
 
 	action, err := getContext(c, "action")
@@ -192,24 +147,68 @@ func (app *Application) HandleSpotifyRedirect(c echo.Context) error {
 		return err
 	}
 
-	// return c.File("./public/home.html")
+	return c.Redirect(http.StatusSeeOther, "/home")
+}
+
+func (app *Application) HandleLogout(c echo.Context) error {
+	userID, err := getContext(c, "user_id")
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	if err := clearSessionHandler(c); err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	if err := app.TokenStore.Delete(c.Request().Context(), userID); err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	return c.Redirect(http.StatusSeeOther, "/")
+}
+
+func (app *Application) HandleCreatePlaylist(c echo.Context) error {
+	playlistID := path.Base(c.FormValue("playlist_link"))
+
+	userID, err := getContext(c, "user_id")
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	token, err := app.TokenStore.Get(c.Request().Context(), userID)
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	client := spotify.New(app.Authenticator.Client(c.Request().Context(), token))
+
+	defer func() {
+		updatedToken, err := client.Token()
+		if err != nil {
+			c.Logger().Error(err)
+		}
+
+		if updatedToken.AccessToken != token.AccessToken {
+			if err := app.TokenStore.Update(c.Request().Context(), userID, updatedToken); err != nil {
+				c.Logger().Error(err)
+			}
+		}
+	}()
+
+	tracks, err := getTracksFromPlaylist(client, playlistID)
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	for _, t := range tracks {
+		fmt.Printf("%+v\n", t)
+	}
+
 	return nil
-
-	// fmt.Printf("USER: %+v\n", user.User)
-
-	// playlist, err := client.GetPlaylist(context.Background(), "37i9dQZF1DZ06evO3gsacM")
-	// if err != nil {
-	// 	return err
-	// }
-
-	// for _, track := range playlist.Tracks.Tracks {
-	// 	fmt.Printf("%+v\n", track)
-	// }
-
-	// track, err := client.GetTrack(context.Background(), "3zTcMQUVeOgNELB4rSATdG")
-
-	// fmt.Printf("%+v\n", track)
-	// fmt.Printf("%+v\n", track.Artists)
-
-	// return nil
 }

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/assets/home/style.css"> </head>
+    <title>Create</title>
+</head>
+<body>
+    <header class="header">
+        <h1>Create New Playree Playlist</h1>
+        <a href="/logout" class="logout">Logout</a>
+    </header>
+
+    <form method="post" action="/create_playlist">
+        <div class="form-group">
+                <label for="playlist_link">Playlist Link:</label>
+                <input type="text" id="playlist_link" name="playlist_link" required>
+        </div>
+        <div class="form-group">
+            <input type="submit" value="submit">
+        </div>
+    </form>
+</body>
+</html>
