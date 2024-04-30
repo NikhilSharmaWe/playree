@@ -1,5 +1,10 @@
 package app
 
+import (
+	"fmt"
+	"os"
+)
+
 type CreatePlaylistService interface {
 	CreatePlaylist(CreatePlaylistRequest) error
 }
@@ -15,5 +20,16 @@ func NewCreatePlaylistService(app *Application) CreatePlaylistService {
 }
 
 func (svc *createPlaylistService) CreatePlaylist(req CreatePlaylistRequest) error {
-	return nil
+	videoIDs, err := svc.app.getYTVideoIDs(req.Tracks)
+	if err != nil {
+		return err
+	}
+
+	if err := svc.app.downloadToAudioLocally(req, videoIDs); err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(fmt.Sprintf("./local-playlists/%s", req.PlayreePlaylistID))
+
+	return svc.app.pushToMinio(req.PlayreePlaylistID)
 }

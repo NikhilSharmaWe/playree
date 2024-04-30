@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/NikhilSharmaWe/rabbitmq"
-	"github.com/google/uuid"
 
 	"github.com/NikhilSharmaWe/playree/playree/models"
 	"github.com/NikhilSharmaWe/playree/playree/store"
@@ -40,35 +39,35 @@ func NewApplication() (*Application, error) {
 	db := createSQLDB()
 	rc := createRedisClient()
 
-	rabbitMQUser := os.Getenv("RABBITMQ_USER")
-	rabbitMQPassword := os.Getenv("RABBITMQ_PASSWORD")
-	rabbitMQVhost := os.Getenv("RABBITMQ_VHOST")
-	rabbitMQAddr := os.Getenv("RABBITMQ_ADDR")
+	// rabbitMQUser := os.Getenv("RABBITMQ_USER")
+	// rabbitMQPassword := os.Getenv("RABBITMQ_PASSWORD")
+	// rabbitMQVhost := os.Getenv("RABBITMQ_VHOST")
+	// rabbitMQAddr := os.Getenv("RABBITMQ_ADDR")
 
 	// each concurrent task should be done with new channel
 	// different connections should be used for publishing and consuming
 
-	instanceID := uuid.NewString()
+	// instanceID := uuid.NewString()
 
-	consumingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
-	if err != nil {
-		return nil, err
-	}
+	// consumingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	publishingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
-	if err != nil {
-		return nil, err
-	}
+	// publishingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	_, err = rabbitmq.CreateNewQueueReturnClient(publishingConnection, "create-playlist-request", true, true)
-	if err != nil {
-		return nil, err
-	}
+	// _, err = rabbitmq.CreateNewQueueReturnClient(publishingConnection, "create-playlist-request", true, true)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	createPlaylistResponseClient, err := rabbitmq.CreateNewQueueReturnClient(consumingConnection, "create-playlist-response-"+instanceID, true, true)
-	if err != nil {
-		return nil, err
-	}
+	// createPlaylistResponseClient, err := rabbitmq.CreateNewQueueReturnClient(consumingConnection, "create-playlist-response-"+instanceID, true, true)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	return &Application{
 		CookieStore: sessions.NewCookieStore([]byte(os.Getenv("SECRET"))),
@@ -83,11 +82,11 @@ func NewApplication() (*Application, error) {
 			spotifyauth.WithClientSecret(os.Getenv("CLIENT_SECRET")),
 		),
 
-		UserStore:                    store.NewUserStore(db),
-		PlaylistStore:                store.NewPlaylistStore(db),
-		TokenStore:                   store.NewTokenStore(rc, "oauth_tokens"),
-		CreatePlaylistResponseClient: createPlaylistResponseClient,
-		PublishingConn:               publishingConnection,
+		UserStore:     store.NewUserStore(db),
+		PlaylistStore: store.NewPlaylistStore(db),
+		TokenStore:    store.NewTokenStore(rc, "oauth_tokens"),
+		// CreatePlaylistResponseClient: createPlaylistResponseClient,
+		// PublishingConn:               publishingConnection,
 	}, nil
 }
 

@@ -9,6 +9,7 @@
 *.dylib
 *.env
 **/bin/
+**/local-playlists/
 
 
 # Test binary, built with `go test -c`
