@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os"
 	"path"
@@ -13,7 +14,6 @@ import (
 	"github.com/NikhilSharmaWe/playree/playree/models"
 	"github.com/NikhilSharmaWe/rabbitmq"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -26,16 +26,20 @@ func (app *Application) Router() *echo.Echo {
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(app.CreateSessionMiddleware)
 	e.Static("/assets", "./public")
+	e.Renderer = &TemplateRegistry{
+		templates: template.Must(template.ParseGlob("public/*/*.html")),
+	}
 
 	e.GET("/", ServeFile("./public/login"), app.IfAlreadyLogined)
 	e.GET("/signup", ServeFile("./public/signup"), app.IfAlreadyLogined)
 	e.GET("/home", ServeFile("./public/home"), app.IfNotLogined)
 	e.GET("/create_playlist", ServeFile("./public/create_playlist"), app.IfNotLogined)
+	// e.GET("/my-playlists", app.HandleMYPlaylists, app.IfNotLogined)
 
 	e.GET("/spotify-auth", app.HandleSpotifyAuth)
 	e.GET(app.SpotifyRedirectPath, app.HandleSpotifyRedirect)
 	e.GET("/logout", app.HandleLogout, app.IfNotLogined)
-	e.GET("/playlist/:playlist_id", app.HandlePlaylist, app.IfNotLogined)
+	e.GET("/playlist/:playlist_id", app.HandlePlaylist, app.IfNotLogined, app.UpdateTrackURIsIfAboutToExpire)
 
 	e.GET("/start-processing", app.HandleCreatePlaylistProcess, app.IfNotLogined)
 	e.GET("/send-playlist-data", app.HandlePlaylistData, app.IfNotLogined)
@@ -199,16 +203,12 @@ func (app *Application) HandleCreatePlaylist(c echo.Context) error {
 
 func (app *Application) HandleCreatePlaylistProcess(c echo.Context) error {
 	var (
-		upgrader = websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
-		}
 		errCh           = make(chan error)
 		playlistCreated = make(chan string)
+		resp            models.RabbitMQCreatePlaylistResponse
 	)
 
-	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	conn, err := app.Upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return err
@@ -265,7 +265,7 @@ func (app *Application) HandleCreatePlaylistProcess(c echo.Context) error {
 	defer delete(app.CreatePlaylistResponseChannel, playreePlaylistID)
 
 	go func() {
-		resp := <-app.CreatePlaylistResponseChannel[playreePlaylistID]
+		resp = <-app.CreatePlaylistResponseChannel[playreePlaylistID]
 		if !resp.Success {
 			errCh <- errors.New(resp.Error)
 		} else {
@@ -306,11 +306,13 @@ func (app *Application) HandleCreatePlaylistProcess(c echo.Context) error {
 
 	select {
 	case <-playlistCreated:
-		if err := app.PlaylistStore.Create(models.PlaylistsDBModel{
-			UserID:       userID,
+		playlist := models.PlaylistsDBModel{
 			PlaylistID:   playreePlaylistID,
 			PlaylistName: playlistName,
-		}); err != nil {
+			UserID:       userID,
+		}
+
+		if err := app.handleAfterPlaylistCreated(&playlist); err != nil {
 			c.Logger().Error(err)
 			sendFailStatusToFrontend(conn)
 			return err
@@ -326,27 +328,79 @@ func (app *Application) HandleCreatePlaylistProcess(c echo.Context) error {
 		return err
 	case <-ticker.C:
 		c.Logger().Error(models.ErrCreatePlaylistServiceTimeout)
-		sendMessageToFrontend(conn, "TIMEOUT: creating playlist timeout")
+		sendMessageToFrontend(conn, "timeout error occurred")
 		return echo.NewHTTPError(http.StatusRequestTimeout, models.ErrCreatePlaylistServiceTimeout)
 	}
 }
 
 func (app *Application) HandlePlaylist(c echo.Context) error {
 	playlistID := c.Param("playlist_id")
+
 	if err := setSession(c, map[string]any{"playlist_id": playlistID}); err != nil {
 		c.Logger().Error(err)
 		return err
 	}
 
-	return c.File("./public/playlist")
-}
-
-func (app *Application) HandlePlaylistData(c echo.Context) error {
-	_, err := getContext(c, "playlist_id")
-	if err != nil {
+	if err := c.File("./public/playlist"); err != nil {
 		c.Logger().Error(err)
 		return err
 	}
 
 	return nil
 }
+
+func (app *Application) HandlePlaylistData(c echo.Context) error {
+	conn, err := app.Upgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	defer conn.Close()
+
+	playlistID, err := getContext(c, "playlist_id")
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	tracks, err := app.TrackStore.GetManyWithFields([]string{"track_key", "track_uri"}, "playlist_id = ?", playlistID)
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	data, err := json.Marshal(tracks)
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	if err := conn.WriteMessage(1, data); err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	return nil
+}
+
+// func (app *Application) HandleYourPlaylists(c echo.Context) error {
+// 	userID, err := getContext(c, "user_id")
+// 	if err != nil {
+// 		c.Logger().Error(err)
+// 		return err
+// 	}
+
+// 	data, err := app.PlaylistStore.GetManyWithFields([]string{"playlist_id", "playlist_name"}, "user_id = ?", userID)
+// 	if err != nil {
+// 		c.Logger().Error(err)
+// 		return err
+// 	}
+
+// 	if err := c.Render(http.StatusOK, "/playlists/index.html", data); err != nil {
+// 		c.Logger().Error(err)
+// 		return err
+// 	}
+
+// 	return nil
+// }

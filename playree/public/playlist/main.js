@@ -1,27 +1,86 @@
+let track_list = [
+  {
+  name: "LOADING TRACKS",
+  artist: "",
+  path: "",
+  }
+];
+
+const TIMEOUT_DURATION = 10000;
+
 window.addEventListener("DOMContentLoaded", (_) => {
 	let websocket = new WebSocket("ws://" + window.location.host + "/send-playlist-data");
-	let room = document.getElementById("status");
-	let path = window.location.pathname;
+  let timeoutId;
+  let errorMessageElement = document.getElementById("error-message");
+  const loadFirstTrackEvent = new Event('load-first-track');
   
 	websocket.addEventListener("message", function (e) {
-	  let data = e.data;
-  
-	  if (/^PLAYLIST URL:\s*(.+)$/.test(data)) {
-		websocket.close();
-		let url = data.match(/PLAYLIST URL:\s*(.+)$/)[1];
-		window.location.href = url;
-		return;
-	  }
-  
-	  let p = document.createElement("p");
-	  p.innerHTML = `<strong>${data}</strong>`;
-	  room.append(p);
-	  room.scrollTop = room.scrollHeight;
+      const tracks = JSON.parse(e.data);
+
+      let index = 0;
+
+      tracks.forEach(track => {
+        console.log(track.track_uri);
+        console.log(getSongName(track.track_key))
+        console.log(getArtists(track.track_key))
+        track_list[index] = {
+          name : getSongName(track.track_key),
+          artist : getArtists(track.track_key),
+          path : track.track_uri, 
+        };
+        index++;
+      });
+
+       document.dispatchEvent(loadFirstTrackEvent);
+       websocket.close();
+       websocket.removeEventListener("close ws connection", this);
+       clearTimeout(timeoutId);
 	});
+
+  const handleTimeout = () => {
+    console.error("Failed to receive track data within", TIMEOUT_DURATION / 1000, "seconds.");
+    errorMessageElement.textContent = "Error: Failed to load tracks. Try Again.";
+  };
+
+  document.addEventListener('load-first-track', function() {
+    loadTrack(0); 
+  });
+
+  timeoutId = setTimeout(handleTimeout, TIMEOUT_DURATION);
 });
 
-// Select all the elements in the HTML page
-// and assign them to a variable
+
+function getSongName(str) {
+  const firstIndex = str.indexOf("_"); 
+  if (firstIndex === -1) {
+    return str; 
+  }
+
+  const secondIndex = str.indexOf("_", firstIndex + 1); 
+
+  if (secondIndex === -1) {
+    return str.substring(0, firstIndex); 
+  }
+
+  return str.substring(firstIndex + 1, secondIndex);
+}
+
+function getArtists(str) {
+  const firstIndex = str.indexOf("$");  
+  if (firstIndex === -1) {
+    return str;  
+  }
+
+  const secondIndex = str.indexOf("$", firstIndex + 1); 
+
+  if (secondIndex === -1) {
+    return str.substring(0, firstIndex);  
+  }
+
+  return str.substring(firstIndex + 1, secondIndex).replace(/@/g, ", ")
+}
+
+
 let now_playing = document.querySelector(".now-playing");
 let track_art = document.querySelector(".track-art");
 let track_name = document.querySelector(".track-name");
@@ -44,30 +103,7 @@ let updateTimer;
 // Create the audio element for the player
 let curr_track = document.createElement('audio');
 
-// Define the list of tracks that have to be played
-let track_list = [
-{
-	name: "Like a Stone",
-	artist: "Audioslave",
-	// image: "Image URL",
-	path: "http://localhost:9000/playree-playlists/1234/1_Like%20a%20Stone_Audioslave.mp3?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=1r6zr2aA7lmrAjBGhzL3%2F20240501%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240501T024557Z&X-Amz-Expires=18000&X-Amz-SignedHeaders=host&X-Amz-Signature=7ee0091ed8119c7cc9094557378f4393da8db24035491feec93acb4716a83d17"
-},
-{
-	name: "BlackHoleSun",
-	artist: "Soundgarden",
-	// image: "Image URL",
-	path: "http://localhost:9000/playree-playlists/1234/0_Blackholesun_Soundgarden.mp3?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=1r6zr2aA7lmrAjBGhzL3%2F20240501%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240501T024634Z&X-Amz-Expires=18000&X-Amz-SignedHeaders=host&X-Amz-Signature=7056a8296c4d2bf967a6f382a34b1d10270ec78695e8da52a9b42ecbc4e6240b"
-},
-{
-	name: "Shipping Lanes",
-	artist: "Chad Crouch",
-	// image: "Image URL",
-	path: "Shipping_Lanes.mp3",
-},
-];
-
 function loadTrack(track_index) {
-  console.log("Hello")
   // Clear the previous seek timer
   clearInterval(updateTimer);
   resetValues();
