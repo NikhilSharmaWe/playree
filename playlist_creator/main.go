@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"time"
 
 	"github.com/NikhilSharmaWe/playree/playlist_creator/app"
-	"github.com/NikhilSharmaWe/playree/playlist_creator/proto"
 	"github.com/joho/godotenv"
+	"golang.org/x/sync/errgroup"
 )
 
 func init() {
@@ -23,30 +21,27 @@ func main() {
 		log.Fatal(err)
 	}
 
-	tracks := []*proto.Track{
-		{
-			Name:    "Blackholesun",
-			Artists: "Soundgarden",
-		},
-		{
-			Name:    "Like a Stone",
-			Artists: "Audioslave",
-		},
+	defer application.ConsumingClient.Close()
+
+	createPlaylistRequestMSGBus, err := setupRabbitMQForStartup(application)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	req := proto.CreatePlaylistRequest{
-		PlayreePlaylistId: "1234",
-		Tracks:            tracks,
-	}
+	g, _ := errgroup.WithContext(context.Background())
+	g.SetLimit(50)
 
 	go func() {
-		time.Sleep(3 * time.Second)
-		resp, err := application.CreatePlaylistClient.CreatePlaylist(context.Background(), &req)
-		if err != nil {
-			log.Fatal(err)
-		}
+		for message := range createPlaylistRequestMSGBus {
+			msg := message
+			g.Go(func() error {
+				if err := handleCreatePlaylistRequests(application, msg); err != nil {
+					log.Println("ERROR: ", err)
+				}
 
-		fmt.Println("RESPONSE: ", resp)
+				return nil
+			})
+		}
 	}()
 
 	log.Fatal(application.MakeCreatePlaylistServerAndRun())

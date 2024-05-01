@@ -10,20 +10,22 @@ import (
 	"strings"
 
 	"github.com/NikhilSharmaWe/playree/playlist_creator/proto"
+	"github.com/NikhilSharmaWe/rabbitmq"
 	ytdl "github.com/NikhilSharmaWe/youtube/downloader"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"google.golang.org/api/option"
 	"google.golang.org/api/youtube/v3"
 )
 
 type Application struct {
-	Addr            string
-	YTService       *youtube.Service
-	MinioClient     *minio.Client
-	MinioBucketName string
-	// ConsumingClient      *rabbitmq.RabbitClient
-	// PublishingConn       *amqp.Connection
+	Addr                 string
+	YTService            *youtube.Service
+	MinioClient          *minio.Client
+	MinioBucketName      string
+	ConsumingClient      *rabbitmq.RabbitClient
+	PublishingConn       *amqp.Connection
 	CreatePlaylistClient proto.CreatePlaylistServiceClient
 }
 
@@ -47,32 +49,32 @@ func NewApplication() (*Application, error) {
 		return nil, err
 	}
 
-	// rabbitMQUser := os.Getenv("RABBITMQ_USER")
-	// rabbitMQPassword := os.Getenv("RABBITMQ_PASSWORD")
-	// rabbitMQVhost := os.Getenv("RABBITMQ_VHOST")
-	// rabbitMQAddr := os.Getenv("RABBITMQ_ADDR")
+	rabbitMQUser := os.Getenv("RABBITMQ_USER")
+	rabbitMQPassword := os.Getenv("RABBITMQ_PASSWORD")
+	rabbitMQVhost := os.Getenv("RABBITMQ_VHOST")
+	rabbitMQAddr := os.Getenv("RABBITMQ_ADDR")
 
 	// each concurrent task should be done with new channel
 	// different connections should be used for publishing and consuming
-	// consumingConn, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	consumingConn, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
+	if err != nil {
+		return nil, err
+	}
 
-	// consumingClient, err := rabbitmq.NewRabbitMQClient(consumingConn)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	consumingClient, err := rabbitmq.NewRabbitMQClient(consumingConn)
+	if err != nil {
+		return nil, err
+	}
 
-	// publishingConn, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	publishingConn, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
+	if err != nil {
+		return nil, err
+	}
 
-	// _, err = rabbitmq.CreateNewQueueReturnClient(consumingConn, "create-playlist-request", true, true)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	_, err = rabbitmq.CreateNewQueueReturnClient(consumingConn, "create-playlist-request", true, true)
+	if err != nil {
+		return nil, err
+	}
 
 	createPlaylistClient, err := NewCreatePlaylistClient(addr)
 	if err != nil {
@@ -80,12 +82,12 @@ func NewApplication() (*Application, error) {
 	}
 
 	return &Application{
-		Addr:            addr,
-		YTService:       ytService,
-		MinioClient:     client,
-		MinioBucketName: minioBucketName,
-		// ConsumingClient:      consumingClient,
-		// PublishingConn:       publishingConn,
+		Addr:                 addr,
+		YTService:            ytService,
+		MinioClient:          client,
+		MinioBucketName:      minioBucketName,
+		ConsumingClient:      consumingClient,
+		PublishingConn:       publishingConn,
 		CreatePlaylistClient: createPlaylistClient,
 	}, nil
 }

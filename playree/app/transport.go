@@ -2,14 +2,21 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path"
+	"time"
 
 	"github.com/NikhilSharmaWe/playree/playree/models"
+	"github.com/NikhilSharmaWe/rabbitmq"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/zmb3/spotify/v2"
 )
 
@@ -28,6 +35,10 @@ func (app *Application) Router() *echo.Echo {
 	e.GET("/spotify-auth", app.HandleSpotifyAuth)
 	e.GET(app.SpotifyRedirectPath, app.HandleSpotifyRedirect)
 	e.GET("/logout", app.HandleLogout, app.IfNotLogined)
+	e.GET("/playlist/:playlist_id", app.HandlePlaylist, app.IfNotLogined)
+
+	e.GET("/start-processing", app.HandleCreatePlaylistProcess, app.IfNotLogined)
+	e.GET("/send-playlist-data", app.HandlePlaylistData, app.IfNotLogined)
 
 	e.POST("/create_playlist", app.HandleCreatePlaylist, app.IfNotLogined, app.UpdateSpotifyTokenIfExpired)
 
@@ -152,6 +163,7 @@ func (app *Application) HandleSpotifyRedirect(c echo.Context) error {
 
 func (app *Application) HandleLogout(c echo.Context) error {
 	userID, err := getContext(c, "user_id")
+
 	if err != nil {
 		c.Logger().Error(err)
 		return err
@@ -172,41 +184,169 @@ func (app *Application) HandleLogout(c echo.Context) error {
 
 func (app *Application) HandleCreatePlaylist(c echo.Context) error {
 	playlistID := path.Base(c.FormValue("playlist_link"))
+	if err := setSession(c, map[string]any{"playlist_id": playlistID}); err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	if err := c.File("./public/processing"); err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	return nil
+}
+
+func (app *Application) HandleCreatePlaylistProcess(c echo.Context) error {
+	var (
+		upgrader = websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		}
+		errCh           = make(chan error)
+		playlistCreated = make(chan string)
+	)
+
+	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	defer conn.Close()
+
+	sendMessageToFrontend(conn, "setting up creating process")
+
+	playlistID, err := getContext(c, "playlist_id")
+	if err != nil {
+		sendFailStatusToFrontend(conn)
+		c.Logger().Error(err)
+	}
+	defer deleteFromSession(c, []string{"playlist_id"})
 
 	userID, err := getContext(c, "user_id")
 	if err != nil {
 		c.Logger().Error(err)
+		sendFailStatusToFrontend(conn)
 		return err
 	}
 
 	token, err := app.TokenStore.Get(context.Background(), userID)
 	if err != nil {
 		c.Logger().Error(err)
+		sendFailStatusToFrontend(conn)
 		return err
 	}
 
-	client := spotify.New(app.Authenticator.Client(context.Background(), token))
+	spotifyClient := spotify.New(app.Authenticator.Client(context.Background(), token))
 
 	defer func() {
-		if err := app.updateTokenFromClientIfNeeded(token, client, userID); err != nil {
+		if err := app.updateTokenFromClientIfNeeded(token, spotifyClient, userID); err != nil {
 			c.Logger().Error(err)
 		}
 	}()
 
-	data, err := getTracksFromPlaylist(client, playlistID)
+	tracksData, playlistName, err := getNameAndTracksFromPlaylist(spotifyClient, playlistID)
 	if err != nil {
 		c.Logger().Error(err)
+		sendFailStatusToFrontend(conn)
 		return err
 	}
 
 	playreePlaylistID := uuid.NewString()
 
-	req := models.CreatePlaylistRequest{
+	createPlaylistReq := models.CreatePlaylistRequest{
 		PlayreePlaylistID: playreePlaylistID,
-		Tracks:            data,
+		Tracks:            tracksData,
 	}
 
-	fmt.Printf("%+v\n", req)
+	app.CreatePlaylistResponseChannel[playreePlaylistID] = make(chan models.RabbitMQCreatePlaylistResponse)
+	defer delete(app.CreatePlaylistResponseChannel, playreePlaylistID)
+
+	go func() {
+		resp := <-app.CreatePlaylistResponseChannel[playreePlaylistID]
+		if !resp.Success {
+			errCh <- errors.New(resp.Error)
+		} else {
+			playlistCreated <- "playlist-created"
+		}
+	}()
+
+	rabbitMQClient, err := rabbitmq.NewRabbitMQClient(app.PublishingConn)
+	if err != nil {
+		c.Logger().Error(err)
+		sendFailStatusToFrontend(conn)
+		return err
+	}
+
+	defer rabbitMQClient.Close()
+
+	body, err := json.Marshal(createPlaylistReq)
+	if err != nil {
+		c.Logger().Error(err)
+		sendFailStatusToFrontend(conn)
+		return err
+	}
+
+	if err := rabbitMQClient.Send(context.Background(), "create-playlist", "create-playlist-request", amqp.Publishing{
+		ContentType:  "application/json",
+		Body:         body,
+		ReplyTo:      "create-playlist-response-" + app.RabbitMQInstanceID,
+		DeliveryMode: amqp.Persistent,
+	}); err != nil {
+		c.Logger().Error(err)
+		sendFailStatusToFrontend(conn)
+		return err
+	}
+
+	sendMessageToFrontend(conn, "creating playlist")
+
+	ticker := time.NewTicker(5 * time.Minute)
+
+	select {
+	case <-playlistCreated:
+		if err := app.PlaylistStore.Create(models.PlaylistsDBModel{
+			UserID:       userID,
+			PlaylistID:   playreePlaylistID,
+			PlaylistName: playlistName,
+		}); err != nil {
+			c.Logger().Error(err)
+			sendFailStatusToFrontend(conn)
+			return err
+		}
+
+		sendMessageToFrontend(conn, "playlist created")
+		sendMessageToFrontend(conn, fmt.Sprintf("PLAYLIST URL:http://%s/playlist/%s", os.Getenv("ADDR"), playreePlaylistID))
+
+		return nil
+
+	case err := <-errCh:
+		c.Logger().Error(err)
+		return err
+	case <-ticker.C:
+		c.Logger().Error(models.ErrCreatePlaylistServiceTimeout)
+		sendMessageToFrontend(conn, "TIMEOUT: creating playlist timeout")
+		return echo.NewHTTPError(http.StatusRequestTimeout, models.ErrCreatePlaylistServiceTimeout)
+	}
+}
+
+func (app *Application) HandlePlaylist(c echo.Context) error {
+	playlistID := c.Param("playlist_id")
+	if err := setSession(c, map[string]any{"playlist_id": playlistID}); err != nil {
+		c.Logger().Error(err)
+		return err
+	}
+
+	return c.File("./public/playlist")
+}
+
+func (app *Application) HandlePlaylistData(c echo.Context) error {
+	_, err := getContext(c, "playlist_id")
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
 
 	return nil
 }

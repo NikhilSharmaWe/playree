@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/NikhilSharmaWe/rabbitmq"
-
 	"github.com/NikhilSharmaWe/playree/playree/models"
 	"github.com/NikhilSharmaWe/playree/playree/store"
+	"github.com/NikhilSharmaWe/rabbitmq"
+	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
@@ -24,6 +27,9 @@ type Application struct {
 	SpotifyClientSecret string
 	SpotifyRedirectPath string
 	Authenticator       *spotifyauth.Authenticator
+
+	MinioClient     *minio.Client
+	MinioBucketName string
 
 	UserStore     store.UserStore
 	PlaylistStore store.PlaylistStore
@@ -39,35 +45,47 @@ func NewApplication() (*Application, error) {
 	db := createSQLDB()
 	rc := createRedisClient()
 
-	// rabbitMQUser := os.Getenv("RABBITMQ_USER")
-	// rabbitMQPassword := os.Getenv("RABBITMQ_PASSWORD")
-	// rabbitMQVhost := os.Getenv("RABBITMQ_VHOST")
-	// rabbitMQAddr := os.Getenv("RABBITMQ_ADDR")
+	minioServerAddr := os.Getenv("MINIO_SERVER_ADDR")
+	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
+	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
+	minioBucketName := os.Getenv("MINIO_BUCKET_NAME")
+
+	client, err := minio.New(minioServerAddr, &minio.Options{
+		Creds: credentials.NewStaticV4(minioAccessKey, minioSecretKey, ""),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rabbitMQUser := os.Getenv("RABBITMQ_USER")
+	rabbitMQPassword := os.Getenv("RABBITMQ_PASSWORD")
+	rabbitMQVhost := os.Getenv("RABBITMQ_VHOST")
+	rabbitMQAddr := os.Getenv("RABBITMQ_ADDR")
 
 	// each concurrent task should be done with new channel
 	// different connections should be used for publishing and consuming
 
-	// instanceID := uuid.NewString()
+	instanceID := uuid.NewString()
 
-	// consumingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	consumingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
+	if err != nil {
+		return nil, err
+	}
 
-	// publishingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	publishingConnection, err := rabbitmq.ConnectRabbitMQ(rabbitMQUser, rabbitMQPassword, rabbitMQAddr, rabbitMQVhost)
+	if err != nil {
+		return nil, err
+	}
 
-	// _, err = rabbitmq.CreateNewQueueReturnClient(publishingConnection, "create-playlist-request", true, true)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	_, err = rabbitmq.CreateNewQueueReturnClient(publishingConnection, "create-playlist-request", true, true)
+	if err != nil {
+		return nil, err
+	}
 
-	// createPlaylistResponseClient, err := rabbitmq.CreateNewQueueReturnClient(consumingConnection, "create-playlist-response-"+instanceID, true, true)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	createPlaylistResponseClient, err := rabbitmq.CreateNewQueueReturnClient(consumingConnection, "create-playlist-response-"+instanceID, true, true)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Application{
 		CookieStore: sessions.NewCookieStore([]byte(os.Getenv("SECRET"))),
@@ -76,17 +94,24 @@ func NewApplication() (*Application, error) {
 		SpotifyClientSecret: os.Getenv("CLIENT_SECRET"),
 		SpotifyRedirectPath: os.Getenv("REDIRECT_PATH"),
 		Authenticator: spotifyauth.New(
-			spotifyauth.WithRedirectURL(fmt.Sprintf("http://localhost%s%s", os.Getenv("ADDR"), os.Getenv("REDIRECT_PATH"))),
+			spotifyauth.WithRedirectURL(fmt.Sprintf("http://%s%s", os.Getenv("ADDR"), os.Getenv("REDIRECT_PATH"))),
 			spotifyauth.WithScopes(spotifyauth.ScopePlaylistReadPrivate),
 			spotifyauth.WithClientID(os.Getenv("CLIENT_ID")),
 			spotifyauth.WithClientSecret(os.Getenv("CLIENT_SECRET")),
 		),
 
+		MinioClient:     client,
+		MinioBucketName: minioBucketName,
+
 		UserStore:     store.NewUserStore(db),
 		PlaylistStore: store.NewPlaylistStore(db),
 		TokenStore:    store.NewTokenStore(rc, "oauth_tokens"),
-		// CreatePlaylistResponseClient: createPlaylistResponseClient,
-		// PublishingConn:               publishingConnection,
+
+		CreatePlaylistResponseClient:  createPlaylistResponseClient,
+		CreatePlaylistResponseChannel: make(map[string]chan models.RabbitMQCreatePlaylistResponse),
+		PublishingConn:                publishingConnection,
+
+		RabbitMQInstanceID: instanceID,
 	}, nil
 }
 
@@ -105,19 +130,19 @@ func (app *Application) updateTokenFromClientIfNeeded(token *oauth2.Token, clien
 	return nil
 }
 
-func getTracksFromPlaylist(client *spotify.Client, playlistID string) ([]*models.Track, error) {
+func getNameAndTracksFromPlaylist(client *spotify.Client, playlistID string) ([]*models.Track, string, error) {
 	data := []*models.Track{}
 
 	playlist, err := client.GetPlaylist(context.Background(), spotify.ID(playlistID))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	for _, track := range playlist.Tracks.Tracks {
-		var artists string
+		artists := "$"
 
 		for _, artist := range track.Track.SimpleTrack.Artists {
-			artists = artists + " " + artist.Name
+			artists = artists + "$" + artist.Name
 		}
 
 		data = append(data, &models.Track{
@@ -126,7 +151,22 @@ func getTracksFromPlaylist(client *spotify.Client, playlistID string) ([]*models
 		})
 	}
 
-	return data, nil
+	return data, playlist.Name, nil
+}
+
+func (app *Application) handleAfterPlaylistCreated(c echo.Context, resp *models.RabbitMQCreatePlaylistResponse) error {
+	userID, err := getContext(c, "user_id")
+	if err != nil {
+		return err
+	}
+	playreePlaylistID := resp.PlayreePlaylistID
+	playlistName := resp.PlaylistName
+
+	return app.PlaylistStore.Create(models.PlaylistsDBModel{
+		UserID:       userID,
+		PlaylistID:   playreePlaylistID,
+		PlaylistName: playlistName,
+	})
 }
 
 func (app *Application) alreadyLoggedIn(c echo.Context) bool {
@@ -182,4 +222,12 @@ func clearSessionHandler(c echo.Context) error {
 	session := c.Get("session").(*sessions.Session)
 	session.Options.MaxAge = -1
 	return session.Save(c.Request(), c.Response())
+}
+
+func sendMessageToFrontend(conn *websocket.Conn, msg string) {
+	conn.WriteMessage(1, []byte(msg))
+}
+
+func sendFailStatusToFrontend(conn *websocket.Conn) {
+	conn.WriteMessage(1, []byte("Error: creating process failed"))
 }

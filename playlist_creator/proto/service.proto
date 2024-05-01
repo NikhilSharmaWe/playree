@@ -13,7 +13,7 @@ message Track {
 
 message CreatePlaylistRequest {
 	string playree_playlist_id = 1;
-	repeated Track tracks = 2;
+	repeated Track tracks = 3;
 }
 
 message CreatePlaylistResponse {
