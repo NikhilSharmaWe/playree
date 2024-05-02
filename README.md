@@ -26,4 +26,11 @@
    The Request contains the list of track names and corresponding artists in the playlist.
    Service first fetches the top `Youtube` video relevant with the song name and artist, downloads it in mp3 and uploads it to S3/Minio in a separate folder and sends the response to Playree about the status.
 
+## Demo
+
+https://github.com/NikhilSharmaWe/playree/assets/77074571/49da5bff-1ce2-4e20-b92d-d87caacd45b5
+
+
+
+
 
