@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"path"
 	"time"
 
@@ -39,10 +41,10 @@ func (app *Application) Router() *echo.Echo {
 	e.GET("/logout", app.HandleLogout, app.IfNotLogined)
 	e.GET("/playlist/:playlist_id", app.HandlePlaylist, app.IfNotLogined, app.UpdateTrackURIsIfAboutToExpire)
 
-	e.GET("/start-processing", app.HandleCreatePlaylistProcess, app.IfNotLogined)
+	e.GET("/start-processing", app.HandleCreatePlaylistProcess, app.IfNotLogined, app.UpdateSpotifyTokenIfExpired)
 	e.GET("/send-playlist-data", app.HandlePlaylistData, app.IfNotLogined)
 
-	e.POST("/create_playlist", app.HandleCreatePlaylist, app.IfNotLogined, app.UpdateSpotifyTokenIfExpired)
+	e.POST("/create_playlist", app.HandleCreatePlaylist, app.IfNotLogined)
 
 	return e
 }
@@ -317,6 +319,7 @@ func (app *Application) HandleCreatePlaylistProcess(c echo.Context) error {
 		}
 
 		sendMessageToFrontend(conn, "playlist created")
+		sendMessageToFrontend(conn, fmt.Sprintf("PLAYLIST URL:http://%s/playlist/%s", os.Getenv("ADDR"), playreePlaylistID))
 
 		return nil
 

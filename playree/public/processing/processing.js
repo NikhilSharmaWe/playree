@@ -10,7 +10,6 @@ window.addEventListener("DOMContentLoaded", (_) => {
 		websocket.close();
 		let url = data.match(/PLAYLIST URL:\s*(.+)$/)[1];
 		window.location.href = url;
-		return;
 	  }
   
 	  let p = document.createElement("p");

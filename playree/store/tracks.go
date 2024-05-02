@@ -46,7 +46,7 @@ func (ps *trackStore) Create(fr models.TrackDBModel) error {
 }
 
 func (ps *trackStore) CreateInBatches(tracks []models.TrackDBModel) error {
-	return ps.db.Table(ps.table()).CreateInBatches(tracks, len(tracks)).Error
+	return ps.db.Table(ps.table()).Order("track_key").CreateInBatches(tracks, len(tracks)).Error
 }
 
 func (ps *trackStore) GetOne(whereQuery string, whereArgs ...interface{}) (*models.TrackDBModel, error) {
