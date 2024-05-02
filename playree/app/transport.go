@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"html/template"
 	"net/http"
-	"os"
 	"path"
 	"time"
 
@@ -26,15 +24,15 @@ func (app *Application) Router() *echo.Echo {
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(app.CreateSessionMiddleware)
 	e.Static("/assets", "./public")
-	e.Renderer = &TemplateRegistry{
-		templates: template.Must(template.ParseGlob("public/*/*.html")),
+	e.Renderer = &Template{
+		templates: template.Must(template.ParseGlob("./public/*/*.html")),
 	}
 
-	e.GET("/", ServeFile("./public/login"), app.IfAlreadyLogined)
-	e.GET("/signup", ServeFile("./public/signup"), app.IfAlreadyLogined)
-	e.GET("/home", ServeFile("./public/home"), app.IfNotLogined)
-	e.GET("/create_playlist", ServeFile("./public/create_playlist"), app.IfNotLogined)
-	// e.GET("/my-playlists", app.HandleMYPlaylists, app.IfNotLogined)
+	e.GET("/", ServeFile("./public/login/login.html"), app.IfAlreadyLogined)
+	e.GET("/signup", ServeFile("./public/signup/signup.html"), app.IfAlreadyLogined)
+	e.GET("/home", ServeFile("./public/home/home.html"), app.IfNotLogined)
+	e.GET("/create_playlist", ServeFile("./public/create_playlist/create_playlist.html"), app.IfNotLogined)
+	e.GET("/my-playlists", app.HandlePlaylists, app.IfNotLogined)
 
 	e.GET("/spotify-auth", app.HandleSpotifyAuth)
 	e.GET(app.SpotifyRedirectPath, app.HandleSpotifyRedirect)
@@ -193,7 +191,7 @@ func (app *Application) HandleCreatePlaylist(c echo.Context) error {
 		return err
 	}
 
-	if err := c.File("./public/processing"); err != nil {
+	if err := c.File("./public/processing/processing.html"); err != nil {
 		c.Logger().Error(err)
 		return err
 	}
@@ -319,7 +317,6 @@ func (app *Application) HandleCreatePlaylistProcess(c echo.Context) error {
 		}
 
 		sendMessageToFrontend(conn, "playlist created")
-		sendMessageToFrontend(conn, fmt.Sprintf("PLAYLIST URL:http://%s/playlist/%s", os.Getenv("ADDR"), playreePlaylistID))
 
 		return nil
 
@@ -341,7 +338,7 @@ func (app *Application) HandlePlaylist(c echo.Context) error {
 		return err
 	}
 
-	if err := c.File("./public/playlist"); err != nil {
+	if err := c.File("./public/playlist/playlist.html"); err != nil {
 		c.Logger().Error(err)
 		return err
 	}
@@ -364,7 +361,7 @@ func (app *Application) HandlePlaylistData(c echo.Context) error {
 		return err
 	}
 
-	tracks, err := app.TrackStore.GetManyWithFields([]string{"track_key", "track_uri"}, "playlist_id = ?", playlistID)
+	tracks, err := app.TrackStore.GetMany([]string{"track_key", "track_uri"}, "playlist_id = ?", playlistID)
 	if err != nil {
 		c.Logger().Error(err)
 		return err
@@ -384,23 +381,23 @@ func (app *Application) HandlePlaylistData(c echo.Context) error {
 	return nil
 }
 
-// func (app *Application) HandleYourPlaylists(c echo.Context) error {
-// 	userID, err := getContext(c, "user_id")
-// 	if err != nil {
-// 		c.Logger().Error(err)
-// 		return err
-// 	}
+func (app *Application) HandlePlaylists(c echo.Context) error {
+	userID, err := getContext(c, "user_id")
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
 
-// 	data, err := app.PlaylistStore.GetManyWithFields([]string{"playlist_id", "playlist_name"}, "user_id = ?", userID)
-// 	if err != nil {
-// 		c.Logger().Error(err)
-// 		return err
-// 	}
+	data, err := app.PlaylistStore.GetMany([]string{"playlist_id", "playlist_name"}, "user_id = ?", userID)
+	if err != nil {
+		c.Logger().Error(err)
+		return err
+	}
 
-// 	if err := c.Render(http.StatusOK, "/playlists/index.html", data); err != nil {
-// 		c.Logger().Error(err)
-// 		return err
-// 	}
+	if err := c.Render(http.StatusOK, "playlists.html", data); err != nil {
+		c.Logger().Error(err)
+		return err
+	}
 
-// 	return nil
-// }
+	return nil
+}

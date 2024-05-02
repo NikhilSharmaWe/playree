@@ -1,0 +1,75 @@
+/* General Styles (consider inheriting from a base stylesheet) */
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	margin: 0;
+	padding: 0;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+	background-color: #f5f5f5; /* Light gray background */
+  }
+  
+  /* Header Styles (consider inheriting from a base stylesheet) */
+  .header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 1rem 2rem;
+	transition: background-color 0.3s ease-in-out;
+	background-color: #fff; /* White header background */
+  }
+  
+  .header h1 {
+	font-size: 2rem;
+	font-weight: bold;
+	color: #222; /* Dark text color for header */
+	transition: color 0.3s ease-in-out;
+  }
+  
+  .logout {
+	font-size: 0.8rem;
+	color: inherit; /* Inherit color from body */
+	position: absolute;
+	top: 1rem;
+	right: 1rem;
+  }
+  
+  /* Playlists Container Styles */
+  .playlists-container {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	margin: auto; /* Center the container vertically */
+	width: 600px; /* Adjust width as needed */
+	padding: 2rem; /* Add padding for content */
+	background-color: #fff; /* White background for playlists section */
+	border: 1px solid #ddd; /* Light border for container */
+	border-radius: 5px; /* Rounded corners for container */
+  }
+  
+  .playlists-container h2 {
+	font-size: 1.5rem;
+	margin-bottom: 1rem;
+  }
+  
+  .playlists-container ul {
+	list-style: none; /* Remove default bullet points */
+	padding: 0; /* Remove default padding */
+  }
+  
+  .playlists-container ul li {
+	margin-bottom: 1rem; /* Spacing between playlists */
+  }
+  
+  .playlists-container ul li a {
+	font-size: 1.2rem;
+	color: #222; /* Dark text color for playlist names */
+	text-decoration: none; /* Remove default underline */
+	transition: color 0.2s ease-in-out;
+  }
+  
+  .playlists-container ul li a:hover {
+	color: #1db954; /* Green color on hover */
+  }
+  

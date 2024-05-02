@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/assets/playlists/style.css">
+    <title>My Playlists</title>
+</head>
+<body>
+    <header class="header">
+        <h1>PLAYREE</h1>
+        <a href="/logout" class="logout">Logout</a>
+    </header>
+
+    <section class="playlists-container">
+      <h2>My Playlists</h2>
+      <ul>
+        {{ range $playlist := . }}  <li>
+            <a href="/playlist/{{ $playlist.PlaylistID }}">{{ $playlist.PlaylistName }}</a>
+          </li>
+        {{ end }}
+      </ul>
+    </section>
+</body>
+</html>

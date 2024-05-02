@@ -12,8 +12,7 @@ type TrackStore interface {
 	Create(fr models.TrackDBModel) error
 	CreateInBatches(tracks []models.TrackDBModel) error
 	GetOne(whereQuery string, whereArgs ...interface{}) (*models.TrackDBModel, error)
-	GetMany(whereQuery string, whereArgs ...interface{}) ([]models.TrackDBModel, error)
-	GetManyWithFields(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.TrackDBModel, error)
+	GetMany(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.TrackDBModel, error)
 	Update(updateMap map[string]any, whereQuery string, whereArgs ...interface{}) error
 	Delete(whereQuery string, whereArgs ...interface{}) error
 	IsExists(whereQuery string, whereArgs ...interface{}) (bool, error)
@@ -59,17 +58,7 @@ func (ps *trackStore) GetOne(whereQuery string, whereArgs ...interface{}) (*mode
 	return &track, nil
 }
 
-func (ps *trackStore) GetMany(whereQuery string, whereArgs ...interface{}) ([]models.TrackDBModel, error) {
-	var tracks []models.TrackDBModel
-
-	if err := ps.db.Table(ps.table()).Where(whereQuery, whereArgs...).Find(&tracks).Error; err != nil {
-		return nil, err
-	}
-
-	return tracks, nil
-}
-
-func (ps *trackStore) GetManyWithFields(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.TrackDBModel, error) {
+func (ps *trackStore) GetMany(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.TrackDBModel, error) {
 	var tracks []models.TrackDBModel
 
 	if err := ps.db.Table(ps.table()).Select(fields).Where(whereQuery, whereArgs...).Find(&tracks).Error; err != nil {

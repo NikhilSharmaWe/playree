@@ -20,9 +20,6 @@ window.addEventListener("DOMContentLoaded", (_) => {
       let index = 0;
 
       tracks.forEach(track => {
-        console.log(track.track_uri);
-        console.log(getSongName(track.track_key))
-        console.log(getArtists(track.track_key))
         track_list[index] = {
           name : getSongName(track.track_key),
           artist : getArtists(track.track_key),
@@ -112,9 +109,7 @@ function loadTrack(track_index) {
   curr_track.src = track_list[track_index].path;
   curr_track.load();
   
-  // Update details of the track
-  // track_art.style.backgroundImage = 
-  //   "url(" + track_list[track_index].image + ")";
+ 
   track_name.textContent = track_list[track_index].name;
   track_artist.textContent = track_list[track_index].artist;
   now_playing.textContent = 
@@ -206,8 +201,6 @@ function loadTrack(track_index) {
       // percentage of the seek slider 
       // and get the relative duration to the track
       seekto = curr_track.duration * (seek_slider.value / 100);
-      
-      // Set the current track position to the calculated seek position
       curr_track.currentTime = seekto;
       }
       
@@ -237,7 +230,6 @@ function loadTrack(track_index) {
         if (currentMinutes < 10) { currentMinutes = "0" + currentMinutes; }
         if (durationMinutes < 10) { durationMinutes = "0" + durationMinutes; }
       
-        // Display the updated duration
         curr_time.textContent = currentMinutes + ":" + currentSeconds;
         total_duration.textContent = durationMinutes + ":" + durationSeconds;
       }

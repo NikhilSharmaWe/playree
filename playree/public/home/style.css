@@ -1,12 +1,76 @@
-.header {
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-}
+    flex-direction: column;
+    transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+  }
 
-.logout {
-    float: right;
-    margin-top: 10px;
-    margin-right: 10px;
-}
+  .header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 1rem 2rem;
+	transition: background-color 0.3s ease-in-out;
+	background-color: #fff; /* White header background */
+  }
+  
+  .hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center; 
+  }
+  
+  .hero h1 {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+  
+  .links {
+    display: flex;
+    justify-content: center;
+    margin-top: 2px;
+  }
+  
+  .links a {
+    margin-right: 2rem;
+    font-size: 1.2rem;
+    text-decoration: none;
+    transition: color 0.2s ease-in-out;
+  }
+
+  .links button {
+    background-color: #1db954; /* Green button color */
+    color: #fff; /* White button text */
+    padding: 10px 20px; /* Button padding */
+    border: none; /* Remove button border */
+    border-radius: 5px; /* Rounded corners for button */
+    cursor: pointer; /* Change cursor to pointer on hover */
+    margin-right: 1rem; /* Add spacing between buttons */
+    transition: background-color 0.2s ease-in-out;
+  }
+  
+  .links button:hover {
+    background-color: #19a94a; /* Darken button color on hover */
+  }
+
+  a{
+    color: white;
+  }
+  
+  .links button:last-child {
+    margin-right: 0; /* Remove margin from the last button */
+  }
+ 
+  .logout {
+    font-size: 0.8rem;
+    position: absolute;
+    top: 1rem; 
+    right: 1rem; 
+  }
+  

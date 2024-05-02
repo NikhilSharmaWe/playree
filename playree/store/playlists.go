@@ -11,7 +11,7 @@ type PlaylistStore interface {
 	CreateTable() error
 	Create(fr models.PlaylistsDBModel) error
 	GetOne(whereQuery string, whereArgs ...interface{}) (*models.PlaylistsDBModel, error)
-	GetManyWithFields(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.PlaylistsDBModel, error)
+	GetMany(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.PlaylistsDBModel, error)
 	Update(updateMap map[string]any, whereQuery string, whereArgs ...interface{}) error
 	Delete(whereQuery string, whereArgs ...interface{}) error
 	IsExists(whereQuery string, whereArgs ...interface{}) (bool, error)
@@ -53,7 +53,7 @@ func (ps *playlistStore) GetOne(whereQuery string, whereArgs ...interface{}) (*m
 	return &inventory, nil
 }
 
-func (ps *playlistStore) GetManyWithFields(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.PlaylistsDBModel, error) {
+func (ps *playlistStore) GetMany(fields []string, whereQuery string, whereArgs ...interface{}) ([]models.PlaylistsDBModel, error) {
 	var playlists []models.PlaylistsDBModel
 
 	if err := ps.db.Table(ps.table()).Select(fields).Where(whereQuery, whereArgs...).Find(&playlists).Error; err != nil {
