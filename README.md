@@ -2,6 +2,14 @@
 
 **`PLAYREE`** let's you to listen your spotify playlists without ads.
 
+## How it works
+1. User logins with their spotify account.
+2. Provides Spotify playlist link, which it wants to create.
+3. Spotify API fetches list of all tracks and corresponding artists.
+4. Youtube API searches for most relevant video and downloads in mp3 and uploads on S3/Minio.
+5. User listens to there playlist on Playree without any disturbance.
+
+
 ## Tools
 - **Backend Languages**: Golang
 - **Frontend Languages**: JavaScript
