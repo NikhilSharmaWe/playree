@@ -254,9 +254,9 @@ func getNameAndTracksFromPlaylist(client *spotify.Client, playlistID string) ([]
 		artists := "$"
 
 		for _, artist := range track.Track.SimpleTrack.Artists {
-			artists = artists + artist.Name + "@"
+			artists = artists + artist.Name + ", "
 		}
-		artists = artists[:len(artists)-1] + "$"
+		artists = artists[:len(artists)-2] + "$"
 
 		data = append(data, &models.Track{
 			Name:    track.Track.Name,

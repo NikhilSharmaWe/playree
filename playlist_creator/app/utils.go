@@ -96,7 +96,7 @@ func (app *Application) getYTVideoIDs(tracks []*proto.Track) ([]string, error) {
 	videoIDs := []string{}
 
 	for _, track := range tracks {
-		query := fmt.Sprintf("%s : %s", track.Name, track.Artists)
+		query := fmt.Sprintf("%s : %s", track.Name, track.Artists[1:len(track.Artists)-1])
 
 		call := app.YTService.Search.List([]string{"id"}).
 			Q(query).

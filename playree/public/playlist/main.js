@@ -74,7 +74,7 @@ function getArtists(str) {
     return str.substring(0, firstIndex);  
   }
 
-  return str.substring(firstIndex + 1, secondIndex).replace(/@/g, ", ")
+  return str.substring(firstIndex+1, secondIndex)
 }
 
 
